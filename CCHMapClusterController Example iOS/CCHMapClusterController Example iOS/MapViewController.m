@@ -173,7 +173,7 @@
             clusterAnnotationView.annotation = annotation;
         } else {
             clusterAnnotationView = [[ClusterAnnotationView alloc] initWithAnnotation:annotation reuseIdentifier:identifier];
-            clusterAnnotationView.canShowCallout = YES;
+//            clusterAnnotationView.canShowCallout = YES;
         }
         
         CCHMapClusterAnnotation *clusterAnnotation = (CCHMapClusterAnnotation *)annotation;
@@ -183,6 +183,13 @@
     }
     
     return annotationView;
+}
+
+- (void)mapView:(MKMapView *)mapView didSelectAnnotationView:(MKAnnotationView *)view
+{
+    view.selected = NO;
+    UIViewController *viewController = [[UIViewController alloc] init];
+    [self.navigationController pushViewController:viewController animated:YES];
 }
 
 - (void)prepareForSegue:(UIStoryboardSegue *)segue sender:(id)sender
