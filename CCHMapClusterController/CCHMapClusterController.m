@@ -57,7 +57,7 @@
 @property (nonatomic, assign) MKCoordinateSpan regionSpanBeforeChange;
 @property (nonatomic, assign, getter = isRegionChanging) BOOL regionChanging;
 @property (nonatomic, strong) id<CCHMapClusterer> strongClusterer;
-@property (nonatomic, strong) CCHMapClusterAnnotation *(^findVisibleAnnotation)(NSSet *annotations, NSSet *visibleAnnotations);
+@property (nonatomic, strong) CCHMapClusterAnnotation *(^findVisibleAnnotation)(ADMapCluster* cluster, NSSet *visibleAnnotations);
 @property (nonatomic, strong) id<CCHMapAnimator> strongAnimator;
 
 @end
@@ -115,11 +115,20 @@
 {
     _reuseExistingClusterAnnotations = reuseExistingClusterAnnotations;
     if (reuseExistingClusterAnnotations) {
-        self.findVisibleAnnotation = ^CCHMapClusterAnnotation *(NSSet *annotations, NSSet *visibleAnnotations) {
-            return CCHMapClusterControllerFindVisibleAnnotation(annotations, visibleAnnotations);
+        self.findVisibleAnnotation = ^CCHMapClusterAnnotation *(ADMapCluster *cluster, NSSet *visibleAnnotations) {
+
+            for (CCHMapClusterAnnotation* annotation in visibleAnnotations) {
+                if (annotation.type == CCHClusterAnnotationTypeCluster && (annotation.cluster == cluster || [annotation.cluster isAncestorOf:cluster] || [cluster isAncestorOf:annotation.cluster])) {
+                    return annotation;
+                }
+                if (annotation.type == CCHClusterAnnotationTypeLeaf && annotation.cluster == cluster) {
+                    return annotation;
+                }
+            }
+            return nil;
         };
     } else {
-        self.findVisibleAnnotation = ^CCHMapClusterAnnotation *(NSSet *annotations, NSSet *visibleAnnotations) {
+        self.findVisibleAnnotation = ^CCHMapClusterAnnotation *(ADMapCluster *cluster, NSSet *visibleAnnotations) {
             return nil;
         };
     }
@@ -205,28 +214,25 @@
 //        NSSet* children = [self.rootMapCluster find:40 childrenInMapRect:gridMapRect] ?: [NSSet set];
         
         
-        for (id child in children) {
-            NSSet* allAnnotationsInCell;
-            CLLocationCoordinate2D coordinate;
-            if ([child isKindOfClass:[ADMapCluster class]]) {
-                ADMapCluster* cluster = child;
-                allAnnotationsInCell = [cluster originalAnnotations];
-                coordinate = cluster.clusterCoordinate;
-            } else if ([child conformsToProtocol:@protocol(MKAnnotation)]) {
-                allAnnotationsInCell = [NSSet setWithObject:child];
-                coordinate = [child coordinate];
-            } else {
-                continue;
-            }
+        for (ADMapCluster* child in children) {
+            NSSet* allAnnotationsInCell = [child originalAnnotations];
+            CLLocationCoordinate2D coordinate = child.clusterCoordinate;
             if (allAnnotationsInCell.count > 0) {
                 if (self.strongClusterer) {
                     coordinate = [self.strongClusterer mapClusterController:self coordinateForAnnotations:allAnnotationsInCell inMapRect:visibleMapRect];
                 }
                 // Select cluster representation
-                CCHMapClusterAnnotation *annotationForCell = _findVisibleAnnotation(allAnnotationsInCell, visibleAnnotations);
+                CCHMapClusterAnnotation *annotationForCell = _findVisibleAnnotation(child, visibleAnnotations);
+                
                 if (annotationForCell == nil) {
                     annotationForCell = [[CCHMapClusterAnnotation alloc] init];
                     annotationForCell.mapClusterController = self;
+                    if (child.annotation) {
+                        annotationForCell.type = CCHClusterAnnotationTypeLeaf;
+                    } else {
+                        annotationForCell.type = CCHClusterAnnotationTypeCluster;
+                    }
+                    annotationForCell.cluster = child;
                     annotationForCell.coordinate = coordinate;
                     annotationForCell.delegate = _delegate;
                     annotationForCell.annotations = allAnnotationsInCell;
@@ -237,6 +243,7 @@
                         annotationForCell.annotations = allAnnotationsInCell;
                         annotationForCell.title = nil;
                         annotationForCell.subtitle = nil;
+                        annotationForCell.cluster = child;
                         annotationForCell.coordinate = coordinate;
                         if ([self.delegate respondsToSelector:@selector(mapClusterController:willReuseMapClusterAnnotation:)]) {
                             [self.delegate mapClusterController:self willReuseMapClusterAnnotation:annotationForCell];
