@@ -118,10 +118,10 @@
         self.findVisibleAnnotation = ^CCHMapClusterAnnotation *(ADMapCluster *cluster, NSSet *visibleAnnotations) {
 
             for (CCHMapClusterAnnotation* annotation in visibleAnnotations) {
-                if (annotation.type == CCHClusterAnnotationTypeCluster && (annotation.cluster == cluster || [annotation.cluster isAncestorOf:cluster] || [cluster isAncestorOf:annotation.cluster])) {
+                if (!cluster.annotation && annotation.type == CCHClusterAnnotationTypeCluster && (annotation.cluster == cluster || [annotation.cluster isAncestorOf:cluster] || [cluster isAncestorOf:annotation.cluster])) {
                     return annotation;
                 }
-                if (annotation.type == CCHClusterAnnotationTypeLeaf && annotation.cluster == cluster) {
+                if (cluster.annotation && annotation.type == CCHClusterAnnotationTypeLeaf && annotation.cluster == cluster) {
                     return annotation;
                 }
             }
