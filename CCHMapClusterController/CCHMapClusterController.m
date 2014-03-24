@@ -46,7 +46,7 @@
 @interface CCHMapClusterController()<MKMapViewDelegate>
 
 @property (nonatomic, strong) NSSet* allAnnotations;
-@property (atomic, assign) BOOL isAnimatingAnnotations;
+
 @property (nonatomic, strong) ADMapCluster* rootMapCluster;
 @property (nonatomic, strong) NSOperationQueue *backgroundQueue;
 @property (nonatomic, strong) NSMutableArray *updateOperations;
@@ -68,7 +68,6 @@
 {
     self = [super init];
     if (self) {
-        _isAnimatingAnnotations = NO;
         _allAnnotations = [NSSet set];
         _marginFactor = 0.5;
         _cellSize = 60;
@@ -151,7 +150,7 @@
         self.allAnnotations = [self.allAnnotations setByAddingObjectsFromArray:annotations];
         updated = self.allAnnotations.count > current;
         dispatch_async(dispatch_get_main_queue(), ^{
-            if (updated && !self.isRegionChanging && !self.isAnimatingAnnotations) {
+            if (updated && !self.isRegionChanging) {
                 [self updateAnnotationsWithCompletionHandler:completionHandler];
             } else if (completionHandler) {
                 completionHandler();
@@ -174,7 +173,7 @@
         updated = self.allAnnotations.count < current;
         
         dispatch_async(dispatch_get_main_queue(), ^{
-            if (updated && !self.isRegionChanging && self.isAnimatingAnnotations) {
+            if (updated && !self.isRegionChanging) {
                 [self updateAnnotationsWithCompletionHandler:completionHandler];
             } else if (completionHandler) {
                 completionHandler();
@@ -193,269 +192,85 @@
     // Expand map rect and align to cell size to avoid popping when panning
     MKMapRect visibleMapRect = _mapView.visibleMapRect;
     MKMapRect gridMapRect = MKMapRectInset(visibleMapRect, -_marginFactor * visibleMapRect.size.width, -_marginFactor * visibleMapRect.size.height);
-    NSArray* allMapViewAnnotations = [self.mapView.annotations filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(id evaluatedObject, NSDictionary *bindings) {
-        return [evaluatedObject isKindOfClass:[CCHMapClusterAnnotation class]] && [evaluatedObject mapClusterController] == self;
-    }]];
+    NSArray* allMapViewAnnotations = self.mapView.annotations;
     NSMutableSet* visibleAnnotations = [[self.mapView annotationsInMapRect:gridMapRect] mutableCopy];
     [visibleAnnotations filterUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(id evaluatedObject, NSDictionary *bindings) {
         return [evaluatedObject isKindOfClass:[CCHMapClusterAnnotation class]] && [evaluatedObject mapClusterController] == self;
     }]];
     
-    
     NSOperation *operation = [NSBlockOperation blockOperationWithBlock:^{
-//        NSSet* clustersToShowOnMap = [self.rootMapCluster find:15 childrenInMapRect:visibleMapRect] ?: [NSSet set];
-        NSSet* clustersToShowOnMap = [self.rootMapCluster findChildrenInMapRect:gridMapRect minCellSize:cellSize] ?: [NSSet set];
+        // For each cell in the grid, pick one annotation to show
+        NSMutableSet *clusters = [NSMutableSet set];
+        NSSet* children = [self.rootMapCluster findChildrenInMapRect:gridMapRect minCellSize:cellSize] ?: [NSSet set];
+//        NSSet* children = [self.rootMapCluster find:40 childrenInMapRect:gridMapRect] ?: [NSSet set];
         
-        // Build an array with available annotations (eg. not moving or not staying at the same place on the map)
-        NSMutableArray * availableSingleAnnotations = [[NSMutableArray alloc] init];
-        NSMutableArray * availableClusterAnnotations = [[NSMutableArray alloc] init];
-        NSMutableArray * selfDividingAnnotations = [NSMutableArray new];
-        NSMutableArray * animatedAnnotations = [NSMutableArray new];
-        for (CCHMapClusterAnnotation * annotation in allMapViewAnnotations) {
-            BOOL isAncestor = NO;
-            if (annotation.cluster) { // if there is a cluster associated to the current annotation
-                for (ADMapCluster * cluster in clustersToShowOnMap) { // is the current annotation cluster an ancestor of one of the clustersToShowOnMap?
-                    if ([annotation.cluster isAncestorOf:cluster]) {
-                        [selfDividingAnnotations addObject:annotation];
-//                        [animatedAnnotations addObject:annotation];
-                        isAncestor = YES;
-                        break;
-                    }
-                }
+        
+        for (id child in children) {
+            NSSet* allAnnotationsInCell;
+            CLLocationCoordinate2D coordinate;
+            if ([child isKindOfClass:[ADMapCluster class]]) {
+                ADMapCluster* cluster = child;
+                allAnnotationsInCell = [cluster originalAnnotations];
+                coordinate = cluster.clusterCoordinate;
+            } else if ([child conformsToProtocol:@protocol(MKAnnotation)]) {
+                allAnnotationsInCell = [NSSet setWithObject:child];
+                coordinate = [child coordinate];
+            } else {
+                continue;
             }
-            if (!isAncestor) { // if not an ancestor
-                BOOL belongsToClusters = NO; // is the annotation a descendant of one of the clusters to be shown on the map
-                if (annotation.cluster) {
-                    for (ADMapCluster * cluster in clustersToShowOnMap) {
-                        if ([cluster isAncestorOf:annotation.cluster] || [cluster isEqual:annotation.cluster]) {
-                            belongsToClusters = YES;
-                            break;
-                        }
-                    }
+            if (allAnnotationsInCell.count > 0) {
+                if (self.strongClusterer) {
+                    coordinate = [self.strongClusterer mapClusterController:self coordinateForAnnotations:allAnnotationsInCell inMapRect:visibleMapRect];
                 }
-                if (!belongsToClusters) { // check if this annotation will be used later. If not, it is flagged as "available".
-                    if (annotation.type == CCHClusterAnnotationTypeLeaf) {
-                        [availableSingleAnnotations addObject:annotation];
-                    } else {
-                        [availableClusterAnnotations addObject:annotation];
-                    }
+                // Select cluster representation
+                CCHMapClusterAnnotation *annotationForCell = _findVisibleAnnotation(allAnnotationsInCell, visibleAnnotations);
+                if (annotationForCell == nil) {
+                    annotationForCell = [[CCHMapClusterAnnotation alloc] init];
+                    annotationForCell.mapClusterController = self;
+                    annotationForCell.coordinate = coordinate;
+                    annotationForCell.delegate = _delegate;
+                    annotationForCell.annotations = allAnnotationsInCell;
+                } else {
+                    [visibleAnnotations removeObject:annotationForCell];
+                    // For existing annotations, this will implicitly update annotation views
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        annotationForCell.annotations = allAnnotationsInCell;
+                        annotationForCell.title = nil;
+                        annotationForCell.subtitle = nil;
+                        annotationForCell.coordinate = coordinate;
+                        if ([self.delegate respondsToSelector:@selector(mapClusterController:willReuseMapClusterAnnotation:)]) {
+                            [self.delegate mapClusterController:self willReuseMapClusterAnnotation:annotationForCell];
+                        }
+                    });
+                }
+                
+                // Collect clusters
+                if (annotationForCell) {
+                    [clusters addObject:annotationForCell];
                 }
             }
         }
-        self.isAnimatingAnnotations = YES;
-//        [self.backgroundQueue setSuspended:YES];
+        
+        // Figure out difference between new and old clusters
+        NSSet *annotationsBeforeAsSet = CCHMapClusterControllerClusterAnnotationsForAnnotations(allMapViewAnnotations, self);
+        NSMutableSet *annotationsToKeep = [annotationsBeforeAsSet mutableCopy];
+        [annotationsToKeep intersectSet:clusters];
+        NSMutableSet *annotationsToAddAsSet = [NSMutableSet setWithSet:clusters];
+        [annotationsToAddAsSet minusSet:annotationsToKeep];
+        NSArray *annotationsToAdd = [annotationsToAddAsSet allObjects];
+        NSMutableSet *annotationsToRemoveAsSet = [NSMutableSet setWithSet:annotationsBeforeAsSet];
+        [annotationsToRemoveAsSet minusSet:clusters];
+        NSArray *annotationsToRemove = [annotationsToRemoveAsSet allObjects];
+        
         dispatch_async(dispatch_get_main_queue(), ^{
-            // Let ancestor annotations divide themselves
-            NSMutableArray* newAnnotationsToBeAddedToMapView = [NSMutableArray new];
-            for (CCHMapClusterAnnotation * annotation in selfDividingAnnotations) {
-                BOOL willNeedAnAvailableAnnotation = NO;
-                CLLocationCoordinate2D originalAnnotationCoordinate = annotation.coordinate;
-                ADMapCluster * originalAnnotationCluster = annotation.cluster;
-                for (ADMapCluster * cluster in clustersToShowOnMap) {
-                    if ([originalAnnotationCluster isAncestorOf:cluster]) {
-                        BOOL isReusingAnnotation = NO;
-                        if (!willNeedAnAvailableAnnotation) {
-                            willNeedAnAvailableAnnotation = YES;
-                            annotation.cluster = cluster;
-                            if (cluster.annotation) { // replace this annotation by a leaf one
-                                NSAssert(annotation.type != CCHClusterAnnotationTypeLeaf, @"Inconsistent annotation type!");
-                                CCHMapClusterAnnotation * singleAnnotation = [availableSingleAnnotations lastObject];
-                                if (singleAnnotation) {
-                                    isReusingAnnotation = YES;
-                                    [availableSingleAnnotations removeLastObject];
-                                } else {
-                                    singleAnnotation = [[CCHMapClusterAnnotation alloc] init];
-                                    singleAnnotation.type = CCHClusterAnnotationTypeLeaf;
-                                    singleAnnotation.mapClusterController = self;
-                                    [newAnnotationsToBeAddedToMapView addObject:singleAnnotation];
-                                }
-                                
-                                singleAnnotation.cluster = annotation.cluster;
-                                singleAnnotation.annotations = cluster.originalAnnotations;
-                                singleAnnotation.coordinate = originalAnnotationCoordinate;
-                                [animatedAnnotations addObject:singleAnnotation];
-                                [availableClusterAnnotations addObject:annotation];
-                                if (isReusingAnnotation && [self.delegate respondsToSelector:@selector(mapClusterController:willReuseMapClusterAnnotation:)]) {
-                                    [self.delegate mapClusterController:self willReuseMapClusterAnnotation:singleAnnotation];
-                                }
-                            }
-                        } else {
-                            CCHMapClusterAnnotation * availableAnnotation = nil;
-                            if (cluster.annotation) {
-                                availableAnnotation = [availableSingleAnnotations lastObject];
-                                if (availableAnnotation) {
-                                    isReusingAnnotation = YES;
-                                    [availableSingleAnnotations removeLastObject];
-                                } else {
-                                    availableAnnotation = [[CCHMapClusterAnnotation alloc] init];
-                                    availableAnnotation.type = CCHClusterAnnotationTypeLeaf;
-                                    availableAnnotation.mapClusterController = self;
-                                    [newAnnotationsToBeAddedToMapView addObject:availableAnnotation];
-                                }
-                            } else {
-                                availableAnnotation = [availableClusterAnnotations lastObject];
-                                if (availableAnnotation) {
-                                    isReusingAnnotation = YES;
-                                    [availableClusterAnnotations removeLastObject];
-                                } else {
-                                    availableAnnotation = [[CCHMapClusterAnnotation alloc] init];
-                                    availableAnnotation.type = CCHClusterAnnotationTypeCluster;
-                                    availableAnnotation.mapClusterController = self;
-                                    [newAnnotationsToBeAddedToMapView addObject:availableAnnotation];
-                                }
-                            }
-                            availableAnnotation.cluster = cluster;
-                            availableAnnotation.annotations = cluster.originalAnnotations;
-                            availableAnnotation.coordinate = originalAnnotationCoordinate;
-                            [animatedAnnotations addObject:availableAnnotation];
-                            if (isReusingAnnotation && [self.delegate respondsToSelector:@selector(mapClusterController:willReuseMapClusterAnnotation:)]) {
-                                [self.delegate mapClusterController:self willReuseMapClusterAnnotation:availableAnnotation];
-                            }
-                        }
-                    }
+            [self.mapView addAnnotations:annotationsToAdd];
+            [self.animator mapClusterController:self willRemoveAnnotations:annotationsToRemove withCompletionHandler:^{
+                [self.mapView removeAnnotations:annotationsToRemove];
+                
+                if (completionHandler) {
+                    completionHandler();
                 }
-            }
-            
-            
-            // Converge annotations to ancestor clusters
-            for (ADMapCluster * cluster in clustersToShowOnMap) {
-                BOOL didAlreadyFindAChild = NO;
-                for (CCHMapClusterAnnotation * annotation in allMapViewAnnotations) {
-                    if (annotation.cluster) {
-                        if ([cluster isAncestorOf:annotation.cluster]) {
-                            BOOL isReusingAnnotation = NO;
-                            CCHMapClusterAnnotation* annotation1 = annotation;
-                            if (annotation1.type == CCHClusterAnnotationTypeLeaf) { // replace this annotation by a cluster one
-                                CCHMapClusterAnnotation * clusterAnnotation = [availableClusterAnnotations lastObject];
-                                if (clusterAnnotation) {
-                                    isReusingAnnotation = YES;
-                                    [availableClusterAnnotations removeLastObject];
-                                } else {
-                                    clusterAnnotation = [[CCHMapClusterAnnotation alloc] init];
-                                    clusterAnnotation.type = CCHClusterAnnotationTypeCluster;
-                                    clusterAnnotation.mapClusterController = self;
-                                    [newAnnotationsToBeAddedToMapView addObject:clusterAnnotation];
-                                }
-                                
-                                clusterAnnotation.cluster = cluster;
-                                clusterAnnotation.annotations = cluster.originalAnnotations;
-                                // Setting the coordinate makes us call viewForAnnotation: right away, so make sure the cluster is set
-                                clusterAnnotation.coordinate = annotation.coordinate;
-                                [availableSingleAnnotations addObject:annotation];
-                                annotation1 = clusterAnnotation;
-                                if (isReusingAnnotation && [self.delegate respondsToSelector:@selector(mapClusterController:willReuseMapClusterAnnotation:)]) {
-                                    [self.delegate mapClusterController:self willReuseMapClusterAnnotation:annotation1];
-                                }
-                            } else {
-                                annotation1.cluster = cluster;
-                                annotation1.annotations = cluster.originalAnnotations;
-                                if ([self.delegate respondsToSelector:@selector(mapClusterController:willReuseMapClusterAnnotation:)]) {
-                                    [self.delegate mapClusterController:self willReuseMapClusterAnnotation:annotation1];
-                                }
-                            }
-                            if (annotation1) {
-                                [animatedAnnotations addObject:annotation1];
-                            }
-                            if (didAlreadyFindAChild) {
-                                annotation1.shouldBeRemovedAfterAnimation = YES;
-                            }
-                            didAlreadyFindAChild = YES;
-                        }
-                    }
-                }
-            }
-            
-            
-            // Add not-yet-annotated clusters
-            NSArray* existingWithToBeAddedAnnotations = [allMapViewAnnotations arrayByAddingObjectsFromArray:newAnnotationsToBeAddedToMapView];
-            for (ADMapCluster * cluster in clustersToShowOnMap) {
-                BOOL isAlreadyAnnotated = NO;
-                for (CCHMapClusterAnnotation * annotation in existingWithToBeAddedAnnotations) {
-                    if ([cluster isEqual:annotation.cluster]) {
-                        annotation.annotations = cluster.originalAnnotations;
-                        isAlreadyAnnotated = YES;
-                        break;
-                    }
-                }
-                if (!isAlreadyAnnotated) {
-                    BOOL isReusingAnnotation = NO;
-                    CCHMapClusterAnnotation* annotation = nil;
-                    if (cluster.annotation) {
-                        annotation = [availableSingleAnnotations lastObject];
-                        if (annotation) {
-                            isReusingAnnotation = YES;
-                            [availableSingleAnnotations removeLastObject];
-                        } else {
-                            annotation = [[CCHMapClusterAnnotation alloc] init];
-                            annotation.type = CCHClusterAnnotationTypeLeaf;
-                            annotation.mapClusterController = self;
-                            [newAnnotationsToBeAddedToMapView addObject:annotation];
-                        }
-                    } else {
-                        annotation = [availableClusterAnnotations lastObject];
-                        if (annotation) {
-                            isReusingAnnotation = YES;
-                            [availableClusterAnnotations removeLastObject];
-                        } else {
-                            annotation = [[CCHMapClusterAnnotation alloc] init];
-                            annotation.type = CCHClusterAnnotationTypeCluster;
-                            annotation.mapClusterController = self;
-                            [newAnnotationsToBeAddedToMapView addObject:annotation];
-                        }
-                    }
-                    annotation.cluster = cluster; // the order here is important: because of KVO, the cluster property must be set before the coordinate property (change of coordinate -> refresh of the view -> refresh of the title -> the cluster can't be nil)
-                    annotation.annotations = cluster.originalAnnotations;
-                    annotation.coordinate = cluster.clusterCoordinate;
-                    if (isReusingAnnotation && [self.delegate respondsToSelector:@selector(mapClusterController:willReuseMapClusterAnnotation:)]) {
-                        [self.delegate mapClusterController:self willReuseMapClusterAnnotation:annotation];
-                    }
-                }
-            }
-
-            
-            NSMutableArray* annotationsToRemove = [[availableSingleAnnotations arrayByAddingObjectsFromArray:availableClusterAnnotations] mutableCopy];
-            
-            [self.mapView addAnnotations:newAnnotationsToBeAddedToMapView];
-            
-            NSArray* updatedAllMapViewAnnotations = [self.mapView.annotations filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(id evaluatedObject, NSDictionary *bindings) {
-                return [evaluatedObject isKindOfClass:[CCHMapClusterAnnotation class]] && [evaluatedObject mapClusterController] == self;
-            }]];
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [UIView animateWithDuration:0.3 delay:0 options:UIViewAnimationOptionBeginFromCurrentState animations:^{
-                    for (CCHMapClusterAnnotation * annotation in updatedAllMapViewAnnotations) {
-                        if (annotation.cluster) {
-                            //                NSAssert(!ADClusterCoordinate2DIsOffscreen(annotation.coordinate), @"annotation.coordinate not valid! Can't animate from an invalid coordinate (inconsistent result)!");
-                            annotation.coordinate = annotation.cluster.clusterCoordinate;
-                        }
-                    }
-                } completion:^(BOOL finished) {
-                    for (CCHMapClusterAnnotation * annotation in updatedAllMapViewAnnotations) {
-                        if (annotation.shouldBeRemovedAfterAnimation) {
-                            [annotationsToRemove addObject:annotation];
-                        }
-                    }
-                    void (^animationCompletionBlock)(void) = ^{
-                        [self.mapView removeAnnotations:annotationsToRemove];
-                        [self.mapView.annotations enumerateObjectsUsingBlock:^(id obj, NSUInteger idx, BOOL *stop) {
-                            if ([obj isKindOfClass:[CCHMapClusterAnnotation class]] && [obj mapClusterController] == self) {
-                                if ([self.delegate respondsToSelector:@selector(mapClusterController:willReuseMapClusterAnnotation:)]) {
-                                    [self.delegate mapClusterController:self willReuseMapClusterAnnotation:obj];
-                                }
-                            }
-                        }];
-                        //                    [self.backgroundQueue setSuspended:NO];
-                        self.isAnimatingAnnotations = NO;
-                        if (completionHandler) {
-                            completionHandler();
-                        }
-                    };
-                    //                if (self.animator) {
-                    //                    [self.animator mapClusterController:self willRemoveAnnotations:annotationsToRemove withCompletionHandler:animationCompletionBlock];
-                    //                } else {
-                    animationCompletionBlock();
-                    //                }
-                }];
-            });
+            }];
         });
     }];
     __weak NSOperation *weakOperation = operation;

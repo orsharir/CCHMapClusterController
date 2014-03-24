@@ -25,16 +25,9 @@
 
 #import <Foundation/Foundation.h>
 #import <MapKit/MapKit.h>
-#import "ADMapCluster.h"
 
 @protocol CCHMapClusterControllerDelegate;
 @class CCHMapClusterController;
-
-typedef enum {
-    CCHClusterAnnotationTypeUnknown = 0,
-    CCHClusterAnnotationTypeLeaf = 1,
-    CCHClusterAnnotationTypeCluster = 2
-} CCHClusterAnnotationType;
 
 /**
  Container for clustered annotations.
@@ -42,9 +35,6 @@ typedef enum {
 @interface CCHMapClusterAnnotation : NSObject<MKAnnotation>
 
 @property (nonatomic, weak) CCHMapClusterController *mapClusterController;
-@property (nonatomic, weak) ADMapCluster* cluster;
-@property (assign) BOOL shouldBeRemovedAfterAnimation;
-@property (assign) CCHClusterAnnotationType type;
 
 /** The string containing the annotation's title. */
 @property (nonatomic, copy) NSString *title;
