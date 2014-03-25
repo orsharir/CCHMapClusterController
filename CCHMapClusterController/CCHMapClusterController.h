@@ -93,4 +93,6 @@
  */
 - (void)selectAnnotation:(id<MKAnnotation>)annotation andZoomToRegionWithLatitudinalMeters:(CLLocationDistance)latitudinalMeters longitudinalMeters:(CLLocationDistance)longitudinalMeters;
 
+- (MKMapRect)mapRectForParentClusterOfAnnotation:(id<MKAnnotation>)annotation;
+
 @end

@@ -41,6 +41,7 @@
 @property (assign) BOOL sameCoordinate;
 @property (assign) NSUInteger annotationsCountAtCreation;
 @property (nonatomic, assign, readwrite) NSUInteger numberOfChildren;
+@property (nonatomic, assign, readwrite) MKMapRect mapRect;
 @end
 
 @interface ADMapCluster (Private)
@@ -616,7 +617,27 @@
         return [names copy];
     }
 }
-
+- (ADMapCluster*)parentClusterOfAnnotation:(id<MKAnnotation>)annotation {
+    if (!annotation) {
+        return nil;
+    }
+    if (_leftChild.annotation == annotation || _rightChild.annotation == annotation) {
+        return self;
+    }
+    if (_leftChild) {
+        ADMapCluster* cluster = [_leftChild parentClusterOfAnnotation:annotation];
+        if (cluster) {
+            return cluster;
+        }
+    }
+    if (_rightChild) {
+        ADMapCluster* cluster = [_rightChild parentClusterOfAnnotation:annotation];
+        if (cluster) {
+            return cluster;
+        }
+    }
+    return nil;
+}
 - (NSString *)description {
     return [self title];
 }

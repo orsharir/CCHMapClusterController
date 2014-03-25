@@ -331,6 +331,13 @@
         [self mapView:self.mapView regionDidChangeAnimated:YES];
     }
 }
+- (MKMapRect)mapRectForParentClusterOfAnnotation:(id<MKAnnotation>)annotation {
+    ADMapCluster* cluster = [self.rootMapCluster parentClusterOfAnnotation:annotation];
+    if (cluster) {
+        return cluster.mapRect;
+    }
+    return MKMapRectNull;
+}
 + (CLLocationDistance)zoomLevelForMapView:(MKMapView*)mapView {
     if (!mapView) {
         return NAN;

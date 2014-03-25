@@ -39,11 +39,11 @@
     CLLocationCoordinate2D _clusterCoordinate;
     ADMapCluster *         _leftChild;
     ADMapCluster *         _rightChild;
-    MKMapRect              _mapRect;
     id<MKAnnotation>       _annotation;
     NSString *             _clusterTitle;
     NSInteger              _depth;
 }
+@property (nonatomic, readonly) MKMapRect mapRect;
 @property (nonatomic) CLLocationCoordinate2D clusterCoordinate;
 @property (nonatomic, strong, readonly) NSString * title;
 @property (nonatomic, strong, readonly) NSString * subtitle;
@@ -66,4 +66,5 @@
 - (BOOL)isAncestorOf:(ADMapCluster *)mapCluster;
 - (BOOL)isRootClusterForAnnotation:(id<MKAnnotation>)annotation;
 - (NSArray *)namesOfChildren;
+- (ADMapCluster*)parentClusterOfAnnotation:(id<MKAnnotation>)annotation;
 @end
