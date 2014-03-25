@@ -57,6 +57,11 @@
 
 /** Delegate to define strategy for animating cluster annotations in and out (default: `CCHFadeInOutMapAnimator`). */
 @property (nonatomic, weak) id<CCHMapAnimator> animator;
+/** A parameter which controls how the center of the cluster is calculated with respect to far away annotations.
+    The default value is 1.0, which means all points carry the same weight when calculating the mean location.
+    Values greater than 1.0 will cause far away points to carry more weight, meaning the center will be placed nearer to them. The center of the cluster controls where the linear classifier will be placed (where the line segmenting the plane to two sub-clusters will pass), so if you have 100 close by annotations, and one far away, you'd want gamma > 1, so that the center will be far enough towards the one far away annotation, so that all of the 100 annotations will be grouped togather.
+ */
+@property (nonatomic, assign) double gamma;
 
 /**
  Initializes the cluster controller.

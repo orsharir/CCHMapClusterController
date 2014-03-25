@@ -68,6 +68,7 @@
 {
     self = [super init];
     if (self) {
+        _gamma = 1.0;
         _allAnnotations = [NSSet set];
         _marginFactor = 0.5;
         _cellSize = 60;
@@ -152,7 +153,7 @@
         NSUInteger current = self.allAnnotations.count;
         NSSet* annotationsSet = [NSSet setWithArray:annotations];
         if (!self.rootMapCluster) {
-            self.rootMapCluster = [ADMapCluster rootClusterForAnnotations:annotationsSet gamma:1 clusterTitle:@"Test" showSubtitle:NO];
+            self.rootMapCluster = [ADMapCluster rootClusterForAnnotations:annotationsSet gamma:self.gamma clusterTitle:@"Test" showSubtitle:NO];
         } else {
             [self.rootMapCluster addAnnotations:annotationsSet];
         }
@@ -174,11 +175,15 @@
     
     [self.backgroundQueue addOperationWithBlock:^{
         BOOL updated;
+        NSSet* annotationsSet = [NSSet setWithArray:annotations];
         NSUInteger current = self.allAnnotations.count;
         NSMutableSet* newSet = [self.allAnnotations mutableCopy];
-        [newSet minusSet:[NSSet setWithArray:annotations]];
+        [newSet minusSet:annotationsSet];
         self.allAnnotations = [newSet copy];
-        self.rootMapCluster = [ADMapCluster rootClusterForAnnotations:self.allAnnotations gamma:1 clusterTitle:@"Test" showSubtitle:NO];
+        if (self.rootMapCluster) {
+            [self.rootMapCluster removeAnnotations:annotationsSet];
+        }
+        
         updated = self.allAnnotations.count < current;
         
         dispatch_async(dispatch_get_main_queue(), ^{
