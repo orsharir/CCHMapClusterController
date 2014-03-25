@@ -60,6 +60,7 @@
 - (BOOL)removeAnnotations:(NSSet*)annotations;
 - (NSSet *)find:(NSInteger)N childrenInMapRect:(MKMapRect)mapRect;
 - (NSSet *)findChildrenInMapRect:(MKMapRect)mapRect minCellSize:(double)size;
+- (NSSet *)singleClusterAnnotationsInMapRect:(MKMapRect)mapRect;
 - (NSSet *)annotationsInMapRect:(MKMapRect)mapRect;
 - (NSArray *)children;
 - (BOOL)isAncestorOf:(ADMapCluster *)mapCluster;

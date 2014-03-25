@@ -68,6 +68,7 @@
 {
     self = [super init];
     if (self) {
+        _minMetersPerPointsForShowingClusters = 0;
         _gamma = 1.0;
         _allAnnotations = [NSSet set];
         _marginFactor = 0.5;
@@ -215,8 +216,13 @@
     NSOperation *operation = [NSBlockOperation blockOperationWithBlock:^{
         // For each cell in the grid, pick one annotation to show
         NSMutableSet *clusters = [NSMutableSet set];
-        NSSet* children = [self.rootMapCluster findChildrenInMapRect:gridMapRect minCellSize:cellSize] ?: [NSSet set];
-//        NSSet* children = [self.rootMapCluster find:40 childrenInMapRect:gridMapRect] ?: [NSSet set];
+        NSSet* children = nil;
+        if ([CCHMapClusterController zoomLevelForMapView:self.mapView] >= self.minMetersPerPointsForShowingClusters) {
+            children = [self.rootMapCluster findChildrenInMapRect:gridMapRect minCellSize:cellSize] ?: [NSSet set];
+//          NSSet* children = [self.rootMapCluster find:40 childrenInMapRect:gridMapRect] ?: [NSSet set];
+        } else {
+            children = [self.rootMapCluster singleClusterAnnotationsInMapRect:gridMapRect];
+        }
         
         
         for (ADMapCluster* child in children) {
@@ -325,7 +331,19 @@
         [self mapView:self.mapView regionDidChangeAnimated:YES];
     }
 }
-
++ (CLLocationDistance)zoomLevelForMapView:(MKMapView*)mapView {
+    if (!mapView) {
+        return NAN;
+    }
+    const CGFloat middleSectionFraction = 0.5;
+    CGFloat viewWidth = CGRectGetWidth(mapView.bounds);
+    CGFloat viewHeight = CGRectGetHeight(mapView.bounds);
+    CGPoint p1 = CGPointMake(viewWidth * (0.5 - middleSectionFraction/2.0), viewHeight * 0.5);
+    CGPoint p2 = CGPointMake(viewWidth * (0.5 + middleSectionFraction/2.0), viewHeight * 0.5);
+    MKMapPoint mp1 = MKMapPointForCoordinate([mapView convertPoint:p1 toCoordinateFromView:mapView]);
+    MKMapPoint mp2 = MKMapPointForCoordinate([mapView convertPoint:p2 toCoordinateFromView:mapView]);
+    return MKMetersBetweenMapPoints(mp1, mp2) / (viewWidth * middleSectionFraction);
+}
 #pragma mark - Map view proxied delegate methods
 
 - (void)mapView:(MKMapView *)mapView didAddAnnotationViews:(NSArray *)annotationViews
@@ -339,7 +357,6 @@
     self.regionSpanBeforeChange = mapView.region.span;
     self.regionChanging = YES;
 }
-
 - (void)mapView:(MKMapView *)mapView regionDidChangeAnimated:(BOOL)animated
 {
     self.regionChanging = NO;

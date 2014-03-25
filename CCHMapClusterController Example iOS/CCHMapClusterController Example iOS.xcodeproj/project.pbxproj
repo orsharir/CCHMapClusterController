@@ -8,7 +8,6 @@
 
 /* Begin PBXBuildFile section */
 		2C28656A18D9EACF00F7B0AF /* ADMapCluster.m in Sources */ = {isa = PBXBuildFile; fileRef = 2C28656918D9EACF00F7B0AF /* ADMapCluster.m */; };
-		2C28656B18D9EACF00F7B0AF /* ADMapCluster.m in Sources */ = {isa = PBXBuildFile; fileRef = 2C28656918D9EACF00F7B0AF /* ADMapCluster.m */; };
 		4869F183184FC4CC00251ADC /* CCHNearCenterMapClusterer.m in Sources */ = {isa = PBXBuildFile; fileRef = 4869F182184FC4CC00251ADC /* CCHNearCenterMapClusterer.m */; };
 		4869F186184FD5F100251ADC /* CCHCenterOfMassMapClusterer.m in Sources */ = {isa = PBXBuildFile; fileRef = 4869F185184FD5F100251ADC /* CCHCenterOfMassMapClusterer.m */; };
 		4869F19D1853AA6300251ADC /* CCHFadeInOutMapAnimator.m in Sources */ = {isa = PBXBuildFile; fileRef = 4869F19B18536E6700251ADC /* CCHFadeInOutMapAnimator.m */; };
@@ -473,7 +472,6 @@
 				6217D6F218BDD97400CDB8C3 /* CCHMapClusterControllerPerformanceTests.m in Sources */,
 				6217D6EF18BDD97400CDB8C3 /* CCHCenterOfMassMapClustererTests.m in Sources */,
 				48899956185CE2B000F3D6ED /* QTree.m in Sources */,
-				2C28656B18D9EACF00F7B0AF /* ADMapCluster.m in Sources */,
 				48D7B0CA185A679F0071636B /* KPTreeNode.m in Sources */,
 				6217D6F118BDD97400CDB8C3 /* CCHMapClusterAnnotationTests.m in Sources */,
 				48D7B0C8185A679F0071636B /* KPAnnotationTree.m in Sources */,

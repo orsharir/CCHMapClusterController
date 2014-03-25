@@ -54,180 +54,6 @@
 @synthesize annotation = _annotation;
 @synthesize depth = _depth;
 
-- (BOOL)addAnnotations:(NSSet*)annotations {
-    return [self _addAnnotations:annotations] > 0;
-}
-- (NSUInteger)_addAnnotations:(NSSet *)annotations {
-    if (!annotations || annotations.count == 0) {
-        return 0;
-    }
-    NSUInteger additions = 0;
-    if (2 * self.annotationsCountAtCreation > self.numberOfChildren + annotations.count) {
-        NSSet* leftAnnotations;
-        NSSet* rightAnnotations;
-        if (self.sameCoordinate) {
-            NSMutableSet* annotationsToAdd = [annotations mutableCopy];
-            [annotationsToAdd minusSet:self.originalAnnotations];
-            if (annotationsToAdd.count == 1) {
-                if (arc4random_uniform(2) == 0) {
-                    leftAnnotations = annotationsToAdd;
-                    rightAnnotations = [NSSet set];
-                } else {
-                    leftAnnotations = [NSSet set];
-                    rightAnnotations = annotationsToAdd;
-                }
-            } else {
-                NSArray* annotationsArray = [annotationsToAdd allObjects];
-                NSInteger pivotIndex = annotationsArray.count /2;
-                leftAnnotations = [NSSet setWithArray:[annotationsArray subarrayWithRange:NSMakeRange(0, pivotIndex)]];
-                rightAnnotations = [NSSet setWithArray:[annotationsArray subarrayWithRange:NSMakeRange(pivotIndex, annotationsArray.count-pivotIndex)]];
-            }
-        } else {
-            // compute scalar product between the vector of this regression line and the vector
-            // (x - x(mean))
-            // (y - y(mean))
-            // the sign of this scalar product determines which cluster the point belongs to
-            leftAnnotations = [[NSMutableSet alloc] initWithCapacity:annotations.count/2.0];
-            rightAnnotations = [[NSMutableSet alloc] initWithCapacity:annotations.count/2.0];
-            for (id<MKAnnotation> annotation in annotations) {
-                const MKMapPoint point = MKMapPointForCoordinate(annotation.coordinate);
-                BOOL positivityConditionOfScalarProduct = YES;
-                if (YES) {
-                    positivityConditionOfScalarProduct = (point.x - self.XMean) * self.aX + (point.y - self.YMean) * self.aY > 0.0;
-                } else {
-                    positivityConditionOfScalarProduct = (point.y - self.YMean) > 0.0;
-                }
-                if (positivityConditionOfScalarProduct) {
-                    [(NSMutableSet *)leftAnnotations addObject:annotation];
-                } else {
-                    [(NSMutableSet *)rightAnnotations addObject:annotation];
-                }
-            }
-        }
-        if (_leftChild) {
-            additions += [_leftChild _addAnnotations:leftAnnotations];
-        } else {
-            _leftChild = [[ADMapCluster alloc] initWithAnnotations:leftAnnotations atDepth:self.depth+1 inMapRect:[ADMapCluster mapRectForAnnotations:leftAnnotations] gamma:self.gamma clusterTitle:self.title showSubtitle:self.showSubtitle];
-            additions += leftAnnotations.count;
-        }
-        if (_rightChild) {
-            additions += [_rightChild _addAnnotations:rightAnnotations];
-        } else {
-            _rightChild = [[ADMapCluster alloc] initWithAnnotations:rightAnnotations atDepth:self.depth+1 inMapRect:[ADMapCluster mapRectForAnnotations:rightAnnotations] gamma:self.gamma clusterTitle:self.title showSubtitle:self.showSubtitle];
-            additions += rightAnnotations.count;
-        }
-        self.numberOfChildren += additions;
-    } else if (annotations.count == 1 && self.annotation && [[annotations anyObject] isEqual:self.annotation]) {
-        return 0;
-    } else {
-//        NSLog(@"Recreated Node at depth %d", self.depth);
-        NSSet* original = self.originalAnnotations;
-        NSSet* allAnnotations = [original setByAddingObjectsFromSet:annotations];
-        additions = allAnnotations.count - original.count;
-        if (additions == 0) {
-            return additions;
-        }
-        
-        MKMapRect boundaries = [ADMapCluster mapRectForAnnotations:allAnnotations];
-        
-        ADMapCluster* newMapCluster = [[ADMapCluster alloc] initWithAnnotations:allAnnotations atDepth:self.depth inMapRect:boundaries gamma:self.gamma clusterTitle:self.title showSubtitle:self.showSubtitle];
-        _leftChild = newMapCluster->_leftChild;
-        _rightChild = newMapCluster->_rightChild;
-        _clusterCoordinate = newMapCluster.clusterCoordinate;
-        _mapRect = newMapCluster->_mapRect;
-        self.annotationsCountAtCreation = newMapCluster.annotationsCountAtCreation;
-        self.aX = newMapCluster.aX;
-        self.aY = newMapCluster.aY;
-        self.XMean = newMapCluster.XMean;
-        self.YMean = newMapCluster.YMean;
-        self.sameCoordinate = newMapCluster.sameCoordinate;
-        self.annotation = newMapCluster.annotation;
-        self.numberOfChildren = newMapCluster.numberOfChildren;
-//        NSLog(@"Recreation done at depth %d", self.depth);
-    }
-    return additions;
-}
-+ (MKMapRect)mapRectForAnnotations:(NSSet*)annotations {
-    MKMapRect boundaries = MKMapRectWorld;
-    
-    // This is optional
-    boundaries = MKMapRectMake(HUGE_VALF, HUGE_VALF, 0.0, 0.0);
-    for (id<MKAnnotation> annotation in annotations) {
-        MKMapPoint point = MKMapPointForCoordinate(annotation.coordinate);
-        if (point.x < boundaries.origin.x) {
-            boundaries.origin.x = point.x;
-        }
-        if (point.y < boundaries.origin.y) {
-            boundaries.origin.y = point.y;
-        }
-        if (point.x > boundaries.origin.x + boundaries.size.width) {
-            boundaries.size.width = point.x - boundaries.origin.x;
-        }
-        if (point.y > boundaries.origin.y + boundaries.size.height) {
-            boundaries.size.height = point.y - boundaries.origin.y;
-        }
-    }
-    
-    return boundaries;
-}
-- (BOOL)removeAnnotations:(NSSet*)annotations {
-    return [self _removeAnnotations:annotations] > 0;
-}
-- (NSUInteger)_removeAnnotations:(NSSet*)annotations {
-    if (!annotations && annotations.count == 0) {
-        return 0;
-    }
-    
-    if (self.annotation && [annotations containsObject:self.annotation]) {
-        self.annotation = 0;
-        self.numberOfChildren = 0;
-        return 1;
-    }
-    
-    NSUInteger removals = 0;
-    if (self.sameCoordinate) {
-        removals += [_leftChild _removeAnnotations:annotations];
-        if (_leftChild.numberOfChildren == 0) {
-            _leftChild = nil;
-        }
-        removals += [_rightChild _removeAnnotations:annotations];
-        if (_rightChild.numberOfChildren == 0) {
-            _rightChild = nil;
-        }
-    } else {
-        // compute scalar product between the vector of this regression line and the vector
-        // (x - x(mean))
-        // (y - y(mean))
-        // the sign of this scalar product determines which cluster the point belongs to
-        NSMutableSet* leftAnnotations = [[NSMutableSet alloc] initWithCapacity:annotations.count/2.0];
-        NSMutableSet* rightAnnotations = [[NSMutableSet alloc] initWithCapacity:annotations.count/2.0];
-        for (id<MKAnnotation> annotation in annotations) {
-            const MKMapPoint point = MKMapPointForCoordinate(annotation.coordinate);
-            BOOL positivityConditionOfScalarProduct = YES;
-            if (YES) {
-                positivityConditionOfScalarProduct = (point.x - self.XMean) * self.aX + (point.y - self.YMean) * self.aY > 0.0;
-            } else {
-                positivityConditionOfScalarProduct = (point.y - self.YMean) > 0.0;
-            }
-            if (positivityConditionOfScalarProduct) {
-                [(NSMutableSet *)leftAnnotations addObject:annotation];
-            } else {
-                [(NSMutableSet *)rightAnnotations addObject:annotation];
-            }
-        }
-        removals += [_leftChild _removeAnnotations:leftAnnotations];
-        if (_leftChild.numberOfChildren == 0) {
-            _leftChild = nil;
-        }
-        removals += [_rightChild _removeAnnotations:rightAnnotations];
-        if (_rightChild.numberOfChildren == 0) {
-            _rightChild = nil;
-        }
-    }
-    
-    self.numberOfChildren -= removals;
-    return removals;
-}
 - (id)initWithAnnotations:(NSSet *)annotations atDepth:(NSInteger)depth inMapRect:(MKMapRect)mapRect gamma:(double)gamma clusterTitle:(NSString *)clusterTitle showSubtitle:(BOOL)showSubtitle {
     self = [super init];
     if (self) {
@@ -422,12 +248,22 @@
 
 + (ADMapCluster *)rootClusterForAnnotations:(NSSet *)initialAnnotations gamma:(double)gamma clusterTitle:(NSString *)clusterTitle showSubtitle:(BOOL)showSubtitle {
     // KDTree
+    MKMapRect boundaries = [self mapRectForAnnotations:initialAnnotations];
     
+    NSLog(@"Computing KD-tree...");
+    ADMapCluster * cluster = [[ADMapCluster alloc] initWithAnnotations:initialAnnotations atDepth:0 inMapRect:boundaries gamma:gamma clusterTitle:clusterTitle showSubtitle:showSubtitle];
+    NSLog(@"Computation done !");
+    if (!cluster) {
+        return nil;
+    }
+    return cluster;
+}
++ (MKMapRect)mapRectForAnnotations:(NSSet*)annotations {
     MKMapRect boundaries = MKMapRectWorld;
     
     // This is optional
     boundaries = MKMapRectMake(HUGE_VALF, HUGE_VALF, 0.0, 0.0);
-    for (id<MKAnnotation> annotation in initialAnnotations) {
+    for (id<MKAnnotation> annotation in annotations) {
         MKMapPoint point = MKMapPointForCoordinate(annotation.coordinate);
         if (point.x < boundaries.origin.x) {
             boundaries.origin.x = point.x;
@@ -443,13 +279,158 @@
         }
     }
     
-    NSLog(@"Computing KD-tree...");
-    ADMapCluster * cluster = [[ADMapCluster alloc] initWithAnnotations:initialAnnotations atDepth:0 inMapRect:boundaries gamma:gamma clusterTitle:clusterTitle showSubtitle:showSubtitle];
-    NSLog(@"Computation done !");
-    if (!cluster) {
-        return nil;
+    return boundaries;
+}
+- (BOOL)addAnnotations:(NSSet*)annotations {
+    return [self _addAnnotations:annotations] > 0;
+}
+- (NSUInteger)_addAnnotations:(NSSet *)annotations {
+    if (!annotations || annotations.count == 0) {
+        return 0;
     }
-    return cluster;
+    NSUInteger additions = 0;
+    if (2 * self.annotationsCountAtCreation > self.numberOfChildren + annotations.count) {
+        NSSet* leftAnnotations;
+        NSSet* rightAnnotations;
+        if (self.sameCoordinate) {
+            NSMutableSet* annotationsToAdd = [annotations mutableCopy];
+            [annotationsToAdd minusSet:self.originalAnnotations];
+            if (annotationsToAdd.count == 1) {
+                if (arc4random_uniform(2) == 0) {
+                    leftAnnotations = annotationsToAdd;
+                    rightAnnotations = [NSSet set];
+                } else {
+                    leftAnnotations = [NSSet set];
+                    rightAnnotations = annotationsToAdd;
+                }
+            } else {
+                NSArray* annotationsArray = [annotationsToAdd allObjects];
+                NSInteger pivotIndex = annotationsArray.count /2;
+                leftAnnotations = [NSSet setWithArray:[annotationsArray subarrayWithRange:NSMakeRange(0, pivotIndex)]];
+                rightAnnotations = [NSSet setWithArray:[annotationsArray subarrayWithRange:NSMakeRange(pivotIndex, annotationsArray.count-pivotIndex)]];
+            }
+        } else {
+            // compute scalar product between the vector of this regression line and the vector
+            // (x - x(mean))
+            // (y - y(mean))
+            // the sign of this scalar product determines which cluster the point belongs to
+            leftAnnotations = [[NSMutableSet alloc] initWithCapacity:annotations.count/2.0];
+            rightAnnotations = [[NSMutableSet alloc] initWithCapacity:annotations.count/2.0];
+            for (id<MKAnnotation> annotation in annotations) {
+                const MKMapPoint point = MKMapPointForCoordinate(annotation.coordinate);
+                BOOL positivityConditionOfScalarProduct = YES;
+                if (YES) {
+                    positivityConditionOfScalarProduct = (point.x - self.XMean) * self.aX + (point.y - self.YMean) * self.aY > 0.0;
+                } else {
+                    positivityConditionOfScalarProduct = (point.y - self.YMean) > 0.0;
+                }
+                if (positivityConditionOfScalarProduct) {
+                    [(NSMutableSet *)leftAnnotations addObject:annotation];
+                } else {
+                    [(NSMutableSet *)rightAnnotations addObject:annotation];
+                }
+            }
+        }
+        if (_leftChild) {
+            additions += [_leftChild _addAnnotations:leftAnnotations];
+        } else {
+            _leftChild = [[ADMapCluster alloc] initWithAnnotations:leftAnnotations atDepth:self.depth+1 inMapRect:[ADMapCluster mapRectForAnnotations:leftAnnotations] gamma:self.gamma clusterTitle:self.title showSubtitle:self.showSubtitle];
+            additions += leftAnnotations.count;
+        }
+        if (_rightChild) {
+            additions += [_rightChild _addAnnotations:rightAnnotations];
+        } else {
+            _rightChild = [[ADMapCluster alloc] initWithAnnotations:rightAnnotations atDepth:self.depth+1 inMapRect:[ADMapCluster mapRectForAnnotations:rightAnnotations] gamma:self.gamma clusterTitle:self.title showSubtitle:self.showSubtitle];
+            additions += rightAnnotations.count;
+        }
+        self.numberOfChildren += additions;
+    } else if (annotations.count == 1 && self.annotation && [[annotations anyObject] isEqual:self.annotation]) {
+        return 0;
+    } else {
+        //        NSLog(@"Recreated Node at depth %d", self.depth);
+        NSSet* original = self.originalAnnotations;
+        NSSet* allAnnotations = [original setByAddingObjectsFromSet:annotations];
+        additions = allAnnotations.count - original.count;
+        if (additions == 0) {
+            return additions;
+        }
+        
+        MKMapRect boundaries = [ADMapCluster mapRectForAnnotations:allAnnotations];
+        
+        ADMapCluster* newMapCluster = [[ADMapCluster alloc] initWithAnnotations:allAnnotations atDepth:self.depth inMapRect:boundaries gamma:self.gamma clusterTitle:self.title showSubtitle:self.showSubtitle];
+        _leftChild = newMapCluster->_leftChild;
+        _rightChild = newMapCluster->_rightChild;
+        _clusterCoordinate = newMapCluster.clusterCoordinate;
+        _mapRect = newMapCluster->_mapRect;
+        self.annotationsCountAtCreation = newMapCluster.annotationsCountAtCreation;
+        self.aX = newMapCluster.aX;
+        self.aY = newMapCluster.aY;
+        self.XMean = newMapCluster.XMean;
+        self.YMean = newMapCluster.YMean;
+        self.sameCoordinate = newMapCluster.sameCoordinate;
+        self.annotation = newMapCluster.annotation;
+        self.numberOfChildren = newMapCluster.numberOfChildren;
+        //        NSLog(@"Recreation done at depth %d", self.depth);
+    }
+    return additions;
+}
+- (BOOL)removeAnnotations:(NSSet*)annotations {
+    return [self _removeAnnotations:annotations] > 0;
+}
+- (NSUInteger)_removeAnnotations:(NSSet*)annotations {
+    if (!annotations && annotations.count == 0) {
+        return 0;
+    }
+    
+    if (self.annotation && [annotations containsObject:self.annotation]) {
+        self.annotation = 0;
+        self.numberOfChildren = 0;
+        return 1;
+    }
+    
+    NSUInteger removals = 0;
+    if (self.sameCoordinate) {
+        removals += [_leftChild _removeAnnotations:annotations];
+        if (_leftChild.numberOfChildren == 0) {
+            _leftChild = nil;
+        }
+        removals += [_rightChild _removeAnnotations:annotations];
+        if (_rightChild.numberOfChildren == 0) {
+            _rightChild = nil;
+        }
+    } else {
+        // compute scalar product between the vector of this regression line and the vector
+        // (x - x(mean))
+        // (y - y(mean))
+        // the sign of this scalar product determines which cluster the point belongs to
+        NSMutableSet* leftAnnotations = [[NSMutableSet alloc] initWithCapacity:annotations.count/2.0];
+        NSMutableSet* rightAnnotations = [[NSMutableSet alloc] initWithCapacity:annotations.count/2.0];
+        for (id<MKAnnotation> annotation in annotations) {
+            const MKMapPoint point = MKMapPointForCoordinate(annotation.coordinate);
+            BOOL positivityConditionOfScalarProduct = YES;
+            if (YES) {
+                positivityConditionOfScalarProduct = (point.x - self.XMean) * self.aX + (point.y - self.YMean) * self.aY > 0.0;
+            } else {
+                positivityConditionOfScalarProduct = (point.y - self.YMean) > 0.0;
+            }
+            if (positivityConditionOfScalarProduct) {
+                [(NSMutableSet *)leftAnnotations addObject:annotation];
+            } else {
+                [(NSMutableSet *)rightAnnotations addObject:annotation];
+            }
+        }
+        removals += [_leftChild _removeAnnotations:leftAnnotations];
+        if (_leftChild.numberOfChildren == 0) {
+            _leftChild = nil;
+        }
+        removals += [_rightChild _removeAnnotations:rightAnnotations];
+        if (_rightChild.numberOfChildren == 0) {
+            _rightChild = nil;
+        }
+    }
+    
+    self.numberOfChildren -= removals;
+    return removals;
 }
 
 - (NSSet *)find:(NSInteger)N childrenInMapRect:(MKMapRect)mapRect {
@@ -543,7 +524,7 @@
     
     return [NSSet setWithArray:annotations];
 }
-- (NSSet *)annotationsInMapRect:(MKMapRect)mapRect {
+- (NSSet *)singleClusterAnnotationsInMapRect:(MKMapRect)mapRect {
     NSArray* clusters = @[self];
     NSMutableArray* annotations = [NSMutableArray new];
     while (clusters.count > 0) {
@@ -551,7 +532,7 @@
         for (ADMapCluster* cluster in clusters) {
             if (cluster.annotation) {
                 if (MKMapRectContainsPoint(mapRect, MKMapPointForCoordinate([cluster.annotation coordinate]))) {
-                    [annotations addObject:cluster.annotation];
+                    [annotations addObject:cluster];
                 }
             } else {
                 for (ADMapCluster* child in [cluster children]) {
@@ -564,6 +545,14 @@
         clusters = nextClusters;
     }
     return [NSSet setWithArray:annotations];
+}
+- (NSSet *)annotationsInMapRect:(MKMapRect)mapRect {
+    NSSet* clusters = [self singleClusterAnnotationsInMapRect:mapRect];
+    NSMutableSet* annotations = [NSMutableSet setWithCapacity:clusters.count];
+    for (ADMapCluster* cluster in clusters) {
+        [annotations addObject:cluster.annotation];
+    }
+    return [annotations copy];
 }
 - (CLLocationDistance)minDistanceBetweenChildren {
     if (_leftChild == nil || _rightChild == nil) {

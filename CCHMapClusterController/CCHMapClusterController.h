@@ -62,6 +62,8 @@
     Values greater than 1.0 will cause far away points to carry more weight, meaning the center will be placed nearer to them. The center of the cluster controls where the linear classifier will be placed (where the line segmenting the plane to two sub-clusters will pass), so if you have 100 close by annotations, and one far away, you'd want gamma > 1, so that the center will be far enough towards the one far away annotation, so that all of the 100 annotations will be grouped togather.
  */
 @property (nonatomic, assign) double gamma;
+/** The minimum meters per screen points ratio for showing clusters. Good for showing single annotations above a certain zoom level. */
+@property (nonatomic, assign) CLLocationDistance minMetersPerPointsForShowingClusters;
 
 /**
  Initializes the cluster controller.

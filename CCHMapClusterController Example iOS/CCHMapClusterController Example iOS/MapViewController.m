@@ -82,6 +82,7 @@
     self.mapClusterControllerRed.debuggingEnabled = settings.isDebuggingEnabled;
     self.mapClusterControllerRed.cellSize = settings.cellSize;
     self.mapClusterControllerRed.marginFactor = settings.marginFactor;
+    self.mapClusterControllerRed.minMetersPerPointsForShowingClusters = 0.5;
     
     if (settings.clusterer == SettingsClustererCenterOfMass) {
         self.mapClusterer = [[CCHCenterOfMassMapClusterer alloc] init];
