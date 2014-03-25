@@ -275,8 +275,8 @@
             }
             double XMean = XSum / (double)annotations.count;
             double YMean = YSum / (double)annotations.count;
-            self.XMean = XMean;
-            self.YMean = YMean;
+            
+            _clusterCoordinate = MKCoordinateForMapPoint(MKMapPointMake(XMean, YMean));
             
             if (gamma != 1.0) {
                 // take gamma weight into account
@@ -306,6 +306,10 @@
                 XMean = gammaSumX/totalWeight;
                 YMean = gammaSumY/totalWeight;
             }
+            
+            self.XMean = XMean;
+            self.YMean = YMean;
+            
             // compute coefficients
             
             double sumXsquared = 0.0;
@@ -408,8 +412,6 @@
                 }
             }
             rightMapRect = MKMapRectMake(XMin, YMin, XMax - XMin, YMax - YMin);
-            
-            _clusterCoordinate = MKCoordinateForMapPoint(MKMapPointMake(XMean, YMean));
             
             _leftChild = [[ADMapCluster alloc] initWithAnnotations:leftAnnotations atDepth:depth+1 inMapRect:leftMapRect gamma:gamma clusterTitle:clusterTitle showSubtitle:showSubtitle];
             _rightChild = [[ADMapCluster alloc] initWithAnnotations:rightAnnotations atDepth:depth+1 inMapRect:rightMapRect gamma:gamma clusterTitle:clusterTitle showSubtitle:showSubtitle];
