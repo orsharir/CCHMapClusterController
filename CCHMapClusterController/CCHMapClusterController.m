@@ -199,6 +199,10 @@
 
 - (void)updateAnnotationsWithCompletionHandler:(void (^)())completionHandler
 {
+    if (self.isPaused) {
+        completionHandler();
+        return;
+    }
     [self sync];
     
     // World size is multiple of cell size so that cells wrap around at the 180th meridian

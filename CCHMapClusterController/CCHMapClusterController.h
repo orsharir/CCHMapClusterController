@@ -64,7 +64,8 @@
 @property (nonatomic, assign) double gamma;
 /** The minimum meters per screen points ratio for showing clusters. Good for showing single annotations above a certain zoom level. */
 @property (nonatomic, assign) CLLocationDistance minMetersPerPointsForShowingClusters;
-
+/** If true, the controller won't auto update the clusters on the map. Good for not using long computatino while animating the map with severate animation steps */
+@property (nonatomic, assign, getter = isPaused) BOOL paused;
 /**
  Initializes the cluster controller.
  @param mapView `MKMapView` to use to display clusters.
@@ -92,7 +93,7 @@
  @param longitudinalMeters East-to-west distance used for zooming.
  */
 - (void)selectAnnotation:(id<MKAnnotation>)annotation andZoomToRegionWithLatitudinalMeters:(CLLocationDistance)latitudinalMeters longitudinalMeters:(CLLocationDistance)longitudinalMeters;
-
+- (void)updateAnnotationsWithCompletionHandler:(void (^)())completionHandler;
 - (MKMapRect)mapRectForParentClusterOfAnnotation:(id<MKAnnotation>)annotation;
 
 @end
