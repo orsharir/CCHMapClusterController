@@ -87,9 +87,9 @@
             // x_ = x - x_mean ; y_ = y - y_mean
             //
             // aX = cov(x_,y_)
-            // 
             //
-            // aY = 0.5/n * ( ∑(x_^2) + ∑(y_^2) + sqrt( (∑(x_^2) + ∑(y_^2))^2 + 4 * cov(x_,y_)^2 ) ) 
+            //
+            // aY = 0.5/n * ( ∑(x_^2) + ∑(y_^2) + sqrt( (∑(x_^2) + ∑(y_^2))^2 + 4 * cov(x_,y_)^2 ) )
             
             // compute the means of the coordinate
             double XSum = 0.0;
@@ -142,7 +142,7 @@
             double sumXsquared = 0.0;
             double sumYsquared = 0.0;
             double sumXY = 0.0;
-
+            
             for (id<MKAnnotation> annotation in annotations) {
                 const MKMapPoint point = MKMapPointForCoordinate(annotation.coordinate);
                 const double x = point.x - XMean;
@@ -170,7 +170,7 @@
             NSSet * rightAnnotations = nil;
             
             if (fabs(sumXsquared)/annotations.count < ADMapClusterDiscriminationPrecision && fabs(sumYsquared)/annotations.count < ADMapClusterDiscriminationPrecision) { // all X and Y are the same => same coordinates
-                // then every x equals XMean and we have to arbitrarily choose where to put the pivotIndex
+                                                                                                                                                                          // then every x equals XMean and we have to arbitrarily choose where to put the pivotIndex
                 self.sameCoordinate = YES;
                 NSArray* annotationsArray = [annotations allObjects];
                 NSInteger pivotIndex = annotationsArray.count /2;
@@ -392,13 +392,7 @@
     NSUInteger removals = 0;
     if (self.sameCoordinate) {
         removals += [_leftChild _removeAnnotations:annotations];
-        if (_leftChild.numberOfChildren == 0) {
-            _leftChild = nil;
-        }
         removals += [_rightChild _removeAnnotations:annotations];
-        if (_rightChild.numberOfChildren == 0) {
-            _rightChild = nil;
-        }
     } else {
         // compute scalar product between the vector of this regression line and the vector
         // (x - x(mean))
@@ -421,16 +415,42 @@
             }
         }
         removals += [_leftChild _removeAnnotations:leftAnnotations];
-        if (_leftChild.numberOfChildren == 0) {
-            _leftChild = nil;
-        }
         removals += [_rightChild _removeAnnotations:rightAnnotations];
-        if (_rightChild.numberOfChildren == 0) {
-            _rightChild = nil;
-        }
     }
-    
     self.numberOfChildren -= removals;
+    self.annotationsCountAtCreation -= removals;
+    
+    if (_leftChild.numberOfChildren == 0) {
+        _leftChild = nil;
+    }
+    if (_rightChild.numberOfChildren == 0) {
+        _rightChild = nil;
+    }
+    ADMapCluster* onlyChild = nil;
+    if (_rightChild && !_leftChild) {
+        onlyChild = _rightChild;
+    } else if (!_rightChild && _leftChild) {
+        onlyChild = _leftChild;
+    }
+    if (onlyChild) {
+        self.aX = onlyChild.aX;
+        self.aY = onlyChild.aY;
+        self.YMean = onlyChild.YMean;
+        self.XMean = onlyChild.XMean;
+        self.gamma = onlyChild.gamma;
+        self.sameCoordinate = onlyChild.sameCoordinate;
+        self.mapRect = onlyChild.mapRect;
+        self->_clusterCoordinate = onlyChild->_clusterCoordinate;
+        self->_leftChild = onlyChild->_leftChild;
+        self->_rightChild = onlyChild->_rightChild;
+        self->_annotation = onlyChild->_annotation;
+        self->_clusterTitle = onlyChild->_clusterTitle;
+        self->_depth = onlyChild->_depth;
+        self.showSubtitle = onlyChild.showSubtitle;
+        self.annotationsCountAtCreation = onlyChild.annotationsCountAtCreation;
+    } else if (_leftChild && _rightChild) {
+        self.mapRect = MKMapRectUnion(_leftChild.mapRect, _rightChild.mapRect);
+    }
     return removals;
 }
 
@@ -439,7 +459,7 @@
     // Adopt a breadth-first search strategy
     // If MapRect intersects the bounds, then keep this element for next iteration
     // Stop if there are N elements or more
-    // Or if the bottom of the tree was reached (d'oh!)    
+    // Or if the bottom of the tree was reached (d'oh!)
     NSMutableArray * clusters = [[NSMutableArray alloc] initWithObjects:self, nil];
     NSMutableArray * annotations = [[NSMutableArray alloc] init];
     NSMutableArray * previousLevelClusters = nil;
@@ -463,7 +483,7 @@
                     [nextLevelClusters addObject:child];
                 }
             }
-        }  
+        }
         if (nextLevelClusters.count > 0) {
             clusters = nextLevelClusters;
             clustersDidChange = YES;
